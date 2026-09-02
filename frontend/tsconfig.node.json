@@ -1,10 +1,11 @@
-Set-Content -Path "frontend/tsconfig.node.json" -Value '{
-"compilerOptions": {
-"composite": true,
-"skipLibCheck": true,
-"module": "ESNext",
-"moduleResolution": "bundler",
-"allowSyntheticDefaultImports": true
-},
-"include": ["vite.config.ts"]
-}'
+{
+  "compilerOptions": {
+    "composite": true,
+    "skipLibCheck": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowSyntheticDefaultImports": true
+  },
+  "include": ["vite.config.ts"]
+}
+
