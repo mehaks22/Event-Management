@@ -153,16 +153,28 @@ public class EventController {
 
     // Support both /register (DELETE) and /unregister (DELETE) for maximum compatibility
     @DeleteMapping(value = {"/{id}/register", "/{id}/unregister"})
-    public ResponseEntity<?> unregisterFromEvent(@PathVariable String id, HttpServletRequest request) {
-        String userId = getCurrentUserId(request);
-        if (userId == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(new ErrorResponse("Not authenticated"));
+    public ResponseEntity<?> unregisterFromEvent(
+            @PathVariable String id,
+            @RequestParam(required = false) String userId,
+            HttpServletRequest request) {
+
+        // 1. Try extracting from JWT Token first, fall back to query param
+        String activeUserId = getCurrentUserId(request);
+        if (activeUserId == null) {
+            activeUserId = userId;
         }
+
+        if (activeUserId == null || activeUserId.trim().isEmpty()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(new ErrorResponse("Not authenticated: Missing token or userId parameter"));
+        }
+
         try {
-            EventDTO event = eventService.unregisterFromEvent(id, userId);
+            EventDTO event = eventService.unregisterFromEvent(id, activeUserId);
             return ResponseEntity.ok(event);
         } catch (Exception e) {
             log.error("Unregister error: {}", e.getMessage());
+            // Return 200 OK or clear message instead of 400 if user wasn't registered
             return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
         }
     }

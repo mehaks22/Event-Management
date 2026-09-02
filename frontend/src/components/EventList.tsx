@@ -35,16 +35,22 @@ export const EventList: React.FC = () => {
     }
   }, [dispatch, userId, token]);
 
-  const fetchUserRegistrations = async () => {
-    try {
-      const res = await API.get(`/registrations/user/${userId}`);
-      const data = res.data;
-      const ids = data.map((reg: any) => reg.event?.id || reg.eventId);
-      setRegisteredEventIds(ids);
-    } catch (err) {
-      console.error('Failed to fetch user registrations', err);
-    }
-  };
+ const fetchUserRegistrations = async () => {
+   try {
+     const res = await API.get('/events/user/registrations');
+     const data = res.data;
+
+     const ids = data.map((reg: any) => {
+       const idVal = reg.event?.id || reg.eventId || reg.eventIdStr;
+       return typeof idVal === 'object' ? idVal.toString() : String(idVal);
+     });
+
+     setRegisteredEventIds(ids);
+   } catch (err) {
+     console.error('Failed to fetch user registrations:', err);
+     setRegisteredEventIds([]);
+   }
+ };
 
   const storedRole = (localStorage.getItem('userRole') || localStorage.getItem('role') || '').trim().toUpperCase();
   const isAdmin = storedRole === 'ADMIN';
