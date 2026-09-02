@@ -87,16 +87,15 @@ public class EventService {
         return convertToDTO(updated);
     }
 
-    // Fixed: Performs Hard Delete in MongoDB and cleans up associated registrations
     @Transactional
     public void deleteEvent(String id) {
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + id));
 
-        // 1. Clean up associated registrations to prevent orphaned records
-        eventRegistrationRepository.deleteById(id);
+        // Fix: Delete all registrations associated with this event ID
+        eventRegistrationRepository.deleteByEvent_Id(id);
 
-        // 2. Hard delete event permanently from database
+        // Hard delete event permanently from database
         eventRepository.deleteById(id);
         log.info("Event hard deleted successfully: {}", id);
     }
@@ -130,6 +129,7 @@ public class EventService {
 
     // ----- Registration -----
 
+    @Transactional
     public EventDTO registerForEvent(String eventId, String userId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + eventId));
@@ -168,23 +168,24 @@ public class EventService {
             eventRegistrationRepository.save(registration);
         }
 
-        int currentAttendees = event.getAttendeeCount() != null ? event.getAttendeeCount() : 0;
-        event.setAttendeeCount(currentAttendees + 1);
+        // Explicit null check and atomic count increment
+        int currentCount = event.getAttendeeCount() != null ? event.getAttendeeCount() : 0;
+        event.setAttendeeCount(currentCount + 1);
         event.setUpdatedAt(LocalDateTime.now());
+
         Event saved = eventRepository.save(event);
 
-        // Send email notification safely
         try {
             emailService.sendEventRegistrationEmail(user.getEmail(), user.getFullName(), event.getTitle());
         } catch (Exception e) {
             log.error("Failed to send registration email: {}", e.getMessage());
         }
 
-        log.info("User {} registered for event {}", userId, eventId);
+        log.info("User {} registered for event {}. Updated attendee count: {}", userId, eventId, saved.getAttendeeCount());
         return convertToDTO(saved);
     }
 
-    // Fixed: Handles cases gracefully if registration record is missing/cancelled without throwing 400 errors
+    @Transactional
     public EventDTO unregisterFromEvent(String eventId, String userId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + eventId));
@@ -193,7 +194,6 @@ public class EventService {
                 .findByUser_IdAndEvent_Id(userId, eventId)
                 .orElse(null);
 
-        // If user was never registered or is already cancelled, safely return current event status
         if (existing == null || existing.getStatus() != EventRegistration.RegistrationStatus.REGISTERED) {
             log.warn("User {} was not actively registered for event {}", userId, eventId);
             return convertToDTO(event);
@@ -202,10 +202,12 @@ public class EventService {
         existing.setStatus(EventRegistration.RegistrationStatus.CANCELLED);
         eventRegistrationRepository.save(existing);
 
-        if (event.getAttendeeCount() != null && event.getAttendeeCount() > 0) {
-            event.setAttendeeCount(event.getAttendeeCount() - 1);
+        int currentCount = event.getAttendeeCount() != null ? event.getAttendeeCount() : 0;
+        if (currentCount > 0) {
+            event.setAttendeeCount(currentCount - 1);
         }
         event.setUpdatedAt(LocalDateTime.now());
+
         Event saved = eventRepository.save(event);
 
         User user = userRepository.findById(userId).orElse(null);
@@ -216,7 +218,7 @@ public class EventService {
                 log.error("Failed to send cancellation email: {}", e.getMessage());
             }
         }
-        log.info("User {} unregistered from event {}", userId, eventId);
+        log.info("User {} unregistered from event {}. Updated attendee count: {}", userId, eventId, saved.getAttendeeCount());
         return convertToDTO(saved);
     }
 

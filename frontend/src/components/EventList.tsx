@@ -66,25 +66,28 @@ export const EventList: React.FC = () => {
     }
   };
 
-  const handleRegisterToggle = async (eventId: string, isRegistered: boolean) => {
-    try {
-      if (isRegistered) {
-        await API.delete(`/events/${eventId}/unregister`);
-      } else {
-        await API.post(`/registrations?userId=${userId}&eventId=${eventId}`);
-      }
+ const handleRegisterToggle = async (eventId: string, isRegistered: boolean) => {
+     try {
+       if (isRegistered) {
+         // Unregister endpoint
+         await API.delete(`/events/${eventId}/unregister`);
+       } else {
+         // Correct Register endpoint
+         await API.post(`/events/${eventId}/register`);
+       }
 
-      dispatch(fetchEvents());
-      if (isRegistered) {
-        setRegisteredEventIds(registeredEventIds.filter((id) => id !== eventId));
-      } else {
-        setRegisteredEventIds([...registeredEventIds, eventId]);
-      }
-    } catch (err: any) {
-      console.error('Registration toggle error:', err);
-      alert(err.response?.data?.message || 'Action failed');
-    }
-  };
+       // Re-fetch events to sync attendeeCount in Redux store
+       await dispatch(fetchEvents());
+
+       // Refresh registered IDs array
+       if (userId && token) {
+         await fetchUserRegistrations();
+       }
+     } catch (err: any) {
+       console.error('Registration toggle error:', err);
+       alert(err.response?.data?.message || 'Action failed');
+     }
+   };
 
   const handleViewAttendees = async (event: any) => {
     try {

@@ -20,4 +20,5 @@ public interface EventRegistrationRepository extends MongoRepository<EventRegist
 
     List<EventRegistration> findByEvent_Id(String eventId);
     boolean existsByEvent_IdAndUser_Id(String eventId, String userId);
+    void deleteByEvent_Id(String eventId);
 }
