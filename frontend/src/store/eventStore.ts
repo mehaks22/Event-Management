@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import API from '../services/api';
 import { CreateEventPayload } from '../types';
 
 interface EventState {
@@ -14,12 +14,11 @@ const initialState: EventState = {
   error: null,
 };
 
-// Fetch Events Thunk
 export const fetchEvents = createAsyncThunk(
   'events/fetchEvents',
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get('http://localhost:8080/api/events');
+      const response = await API.get('/events');
       return response.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Failed to fetch events');
@@ -27,7 +26,6 @@ export const fetchEvents = createAsyncThunk(
   }
 );
 
-// Create Event Thunk
 export const createNewEvent = createAsyncThunk(
   'events/createNewEvent',
   async (
@@ -35,7 +33,6 @@ export const createNewEvent = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const token = localStorage.getItem('token');
       const fullBody = {
         title: payload.title,
         description: payload.description,
@@ -46,16 +43,7 @@ export const createNewEvent = createAsyncThunk(
         organizerId: organizerId,
       };
 
-      const response = await axios.post(
-        'http://localhost:8080/api/events',
-        fullBody,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await API.post('/events', fullBody);
       return response.data;
     } catch (err: any) {
       return rejectWithValue(
@@ -65,21 +53,11 @@ export const createNewEvent = createAsyncThunk(
   }
 );
 
-// Register for Event Thunk
 export const registerForEvent = createAsyncThunk(
   'events/registerForEvent',
   async (eventId: string, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await axios.post(
-        `http://localhost:8080/api/events/${eventId}/register`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        }
-      );
+      const response = await API.post(`/events/${eventId}/register`, {});
       return response.data;
     } catch (err: any) {
       return rejectWithValue(err.response?.data?.message || 'Registration failed');
@@ -93,7 +71,6 @@ const eventSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      // Fetch Events
       .addCase(fetchEvents.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -106,13 +83,9 @@ const eventSlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
-
-      // Create Event
       .addCase(createNewEvent.fulfilled, (state, action) => {
         state.events.push(action.payload);
       })
-
-      // Register for Event
       .addCase(registerForEvent.fulfilled, (state, action) => {
         const index = state.events.findIndex((e) => e.id === action.payload.id);
         if (index !== -1) {
@@ -122,6 +95,5 @@ const eventSlice = createSlice({
   },
 });
 
-// Both named export and default export provided to avoid import mismatch errors
 export const eventReducer = eventSlice.reducer;
 export default eventSlice.reducer;

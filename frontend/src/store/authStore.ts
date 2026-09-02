@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import axios from 'axios';
+import API from '../services/api';
 
 interface AuthState {
   user: any | null;
@@ -20,9 +20,7 @@ export const registerUser = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/register', userData, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const response = await API.post('/auth/register', userData);
       return response.data;
     } catch (err: any) {
       return rejectWithValue(
@@ -36,9 +34,7 @@ export const loginUser = createAsyncThunk(
   'auth/loginUser',
   async (credentials: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/login', credentials, {
-        headers: { 'Content-Type': 'application/json' },
-      });
+      const response = await API.post('/auth/login', credentials);
       return response.data;
     } catch (err: any) {
       return rejectWithValue(
@@ -68,7 +64,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = action.payload;
         const data = action.payload || {};
-        const u = data.user || data; // handles nested or flat response
+        const u = data.user || data;
 
         localStorage.setItem('userId', u.id || u.userId || '');
         localStorage.setItem('userName', u.fullName || u.name || u.username || 'User');
@@ -86,20 +82,18 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = action.payload;
 
-        console.log("FULL LOGIN RESPONSE FROM BACKEND:", action.payload);
+        const data = action.payload || {};
+        const u = data.user || data;
 
-                const data = action.payload || {};
-                const u = data.user || data;
+        const token = data.token || data.accessToken || data.jwt;
+        if (token) {
+          localStorage.setItem('token', token);
+        }
 
-                const token = data.token || data.accessToken || data.jwt;
-                if (token) {
-                  localStorage.setItem('token', token);
-                }
-
-                localStorage.setItem('userId', u.id || u.userId || '');
-                localStorage.setItem('userName', u.fullName || u.name || u.username || 'User');
-                localStorage.setItem('userRole', (u.role || 'USER').toUpperCase());
-              })
+        localStorage.setItem('userId', u.id || u.userId || '');
+        localStorage.setItem('userName', u.fullName || u.name || u.username || 'User');
+        localStorage.setItem('userRole', (u.role || 'USER').toUpperCase());
+      })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;

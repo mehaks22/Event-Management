@@ -3,6 +3,7 @@ import { useDispatch } from 'react-redux';
 import { AppDispatch } from '../store/store';
 import { fetchEvents } from '../store/eventStore';
 import { EVENT_CATEGORIES } from '../constants/categories';
+import API from '../services/api';
 
 interface CreateEventProps {
   isOpen: boolean;
@@ -21,13 +22,11 @@ export const CreateEvent: React.FC<CreateEventProps> = ({ isOpen, onClose, event
   const [description, setDescription] = useState('');
   const [speakers, setSpeakers] = useState('');
 
-  // Pre-fill fields when editing, or clear them when creating
   useEffect(() => {
     if (eventDataToEdit) {
       setTitle(eventDataToEdit.title || '');
       setCategory(eventDataToEdit.category || EVENT_CATEGORIES[0]);
       if (eventDataToEdit.eventDate) {
-        // Format date for datetime-local input (YYYY-MM-DDTHH:mm)
         const dateStr = new Date(eventDataToEdit.eventDate).toISOString().slice(0, 16);
         setEventDate(dateStr);
       } else {
@@ -37,7 +36,6 @@ export const CreateEvent: React.FC<CreateEventProps> = ({ isOpen, onClose, event
       setLocation(eventDataToEdit.location || '');
       setDescription(eventDataToEdit.description || '');
 
-      // Handle speakers pre-filling safely (whether it's an array or string)
       if (eventDataToEdit.speakers) {
         const speakerVal = Array.isArray(eventDataToEdit.speakers)
           ? eventDataToEdit.speakers.join(', ')
@@ -61,14 +59,11 @@ export const CreateEvent: React.FC<CreateEventProps> = ({ isOpen, onClose, event
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const token = localStorage.getItem('token');
 
-    // Format date string to match LocalDateTime (YYYY-MM-DDTHH:mm:ss) without 'Z'
     const formattedDate = eventDate
       ? (eventDate.length === 16 ? eventDate + ':00' : eventDate)
       : null;
 
-    // Convert comma-separated string into an array of trimmed strings for the backend
     const speakersArray = speakers
       ? speakers.split(',').map((s) => s.trim()).filter(Boolean)
       : [];
@@ -84,30 +79,17 @@ export const CreateEvent: React.FC<CreateEventProps> = ({ isOpen, onClose, event
     };
 
     try {
-      const url = eventDataToEdit
-        ? `http://localhost:8080/api/events/${eventDataToEdit.id}`
-        : 'http://localhost:8080/api/events';
-
-      const method = eventDataToEdit ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (response.ok) {
-        dispatch(fetchEvents());
-        onClose();
+      if (eventDataToEdit) {
+        await API.put(`/events/${eventDataToEdit.id}`, payload);
       } else {
-        const err = await response.json();
-        alert(err.message || 'Operation failed');
+        await API.post('/events', payload);
       }
-    } catch (error) {
+
+      dispatch(fetchEvents());
+      onClose();
+    } catch (error: any) {
       console.error('Error saving event:', error);
+      alert(error.response?.data?.message || 'Operation failed');
     }
   };
 
@@ -207,7 +189,6 @@ export const CreateEvent: React.FC<CreateEventProps> = ({ isOpen, onClose, event
             />
           </div>
 
-          {/* Speakers Input Field */}
           <div>
             <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#64748b' }}>SPEAKERS (COMMA SEPARATED)</label>
             <input
