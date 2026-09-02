@@ -94,7 +94,7 @@ public class EventService {
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + id));
 
         // 1. Clean up associated registrations to prevent orphaned records
-        eventRegistrationRepository.deleteByEvent_Id(id);
+        eventRegistrationRepository.deleteById(id);
 
         // 2. Hard delete event permanently from database
         eventRepository.deleteById(id);
