@@ -2,17 +2,19 @@ package com.project.eventmanagement.service;
 
 import com.project.eventmanagement.dto.EventDTO;
 import com.project.eventmanagement.model.Event;
+import com.project.eventmanagement.model.EventRegistration;
 import com.project.eventmanagement.model.User;
+import com.project.eventmanagement.repository.EventRegistrationRepository;
 import com.project.eventmanagement.repository.EventRepository;
 import com.project.eventmanagement.repository.UserRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
-import com.project.eventmanagement.model.EventRegistration;
-import com.project.eventmanagement.repository.EventRegistrationRepository;
 
 @Service
 @Slf4j
@@ -85,18 +87,24 @@ public class EventService {
         return convertToDTO(updated);
     }
 
+    // Fixed: Performs Hard Delete in MongoDB and cleans up associated registrations
+    @Transactional
     public void deleteEvent(String id) {
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + id));
-        event.setIsActive(false);
-        event.setUpdatedAt(LocalDateTime.now());
-        eventRepository.save(event);
-        log.info("Event deleted (soft delete): {}", id);
+
+        // 1. Clean up associated registrations to prevent orphaned records
+        eventRegistrationRepository.deleteByEvent_Id(id);
+
+        // 2. Hard delete event permanently from database
+        eventRepository.deleteById(id);
+        log.info("Event hard deleted successfully: {}", id);
     }
 
     public List<EventDTO> searchEvents(String query) {
         return eventRepository.findByTitleContainingIgnoreCase(query)
                 .stream()
+                .filter(e -> Boolean.TRUE.equals(e.getIsActive()))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -104,6 +112,7 @@ public class EventService {
     public List<EventDTO> getEventsByCategory(String category) {
         return eventRepository.findByCategory(category)
                 .stream()
+                .filter(e -> Boolean.TRUE.equals(e.getIsActive()))
                 .map(this::convertToDTO)
                 .collect(Collectors.toList());
     }
@@ -159,27 +168,37 @@ public class EventService {
             eventRegistrationRepository.save(registration);
         }
 
-        event.setAttendeeCount(event.getAttendeeCount() + 1);
+        int currentAttendees = event.getAttendeeCount() != null ? event.getAttendeeCount() : 0;
+        event.setAttendeeCount(currentAttendees + 1);
         event.setUpdatedAt(LocalDateTime.now());
         Event saved = eventRepository.save(event);
 
-        // Send event registration confirmation email
-        emailService.sendEventRegistrationEmail(user.getEmail(), user.getFullName(), event.getTitle());
+        // Send email notification safely
+        try {
+            emailService.sendEventRegistrationEmail(user.getEmail(), user.getFullName(), event.getTitle());
+        } catch (Exception e) {
+            log.error("Failed to send registration email: {}", e.getMessage());
+        }
 
         log.info("User {} registered for event {}", userId, eventId);
         return convertToDTO(saved);
     }
 
+    // Fixed: Handles cases gracefully if registration record is missing/cancelled without throwing 400 errors
     public EventDTO unregisterFromEvent(String eventId, String userId) {
         Event event = eventRepository.findById(eventId)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + eventId));
 
         EventRegistration existing = eventRegistrationRepository
                 .findByUser_IdAndEvent_Id(userId, eventId)
-                .orElseThrow(() -> new RuntimeException("You are not registered for this event"));
-        if (existing.getStatus() != EventRegistration.RegistrationStatus.REGISTERED) {
-            throw new RuntimeException("You are not currently registered for this event");
+                .orElse(null);
+
+        // If user was never registered or is already cancelled, safely return current event status
+        if (existing == null || existing.getStatus() != EventRegistration.RegistrationStatus.REGISTERED) {
+            log.warn("User {} was not actively registered for event {}", userId, eventId);
+            return convertToDTO(event);
         }
+
         existing.setStatus(EventRegistration.RegistrationStatus.CANCELLED);
         eventRegistrationRepository.save(existing);
 
@@ -188,14 +207,18 @@ public class EventService {
         }
         event.setUpdatedAt(LocalDateTime.now());
         Event saved = eventRepository.save(event);
+
         User user = userRepository.findById(userId).orElse(null);
         if (user != null) {
-            emailService.sendRegistrationCancellationEmail(user.getEmail(), user.getFullName(), event.getTitle());
+            try {
+                emailService.sendRegistrationCancellationEmail(user.getEmail(), user.getFullName(), event.getTitle());
+            } catch (Exception e) {
+                log.error("Failed to send cancellation email: {}", e.getMessage());
+            }
         }
         log.info("User {} unregistered from event {}", userId, eventId);
         return convertToDTO(saved);
     }
-
 
     public boolean isUserRegistered(String eventId, String userId) {
         return eventRegistrationRepository.findByUser_IdAndEvent_Id(userId, eventId)
@@ -212,7 +235,7 @@ public class EventService {
                 .location(event.getLocation())
                 .category(event.getCategory())
                 .capacity(event.getCapacity())
-                .attendeeCount(event.getAttendeeCount())
+                .attendeeCount(event.getAttendeeCount() != null ? event.getAttendeeCount() : 0)
                 .organizerId(event.getOrganizer() != null ? event.getOrganizer().getId() : null)
                 .isActive(event.getIsActive())
                 .createdAt(event.getCreatedAt())
