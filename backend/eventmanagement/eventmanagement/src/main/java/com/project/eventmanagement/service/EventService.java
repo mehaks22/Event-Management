@@ -92,11 +92,39 @@ public class EventService {
         Event event = eventRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Event not found with ID: " + id));
 
-        // Fix: Delete all registrations associated with this event ID
-        eventRegistrationRepository.deleteByEvent_Id(id);
+        // 1. Fetch registered attendees BEFORE deleting database records
+        List<EventRegistration> registrations = eventRegistrationRepository.findByEvent_Id(id);
+        for (EventRegistration reg : registrations) {
+            if (reg.getUser() != null && reg.getUser().getEmail() != null) {
+                try {
+                    emailService.sendCancellationEmail(
+                            reg.getUser().getEmail(),
+                            reg.getUser().getFullName(),
+                            event.getTitle()
+                    );
+                } catch (Exception e) {
+                    log.error("Failed to send cancellation email to attendee {}: {}", reg.getUser().getEmail(), e.getMessage());
+                }
+            }
+        }
 
-        // Hard delete event permanently from database
+        // 2. Send cancellation email to the Organizer/Admin
+        if (event.getOrganizer() != null && event.getOrganizer().getEmail() != null) {
+            try {
+                emailService.sendCancellationEmail(
+                        event.getOrganizer().getEmail(),
+                        event.getOrganizer().getFullName(),
+                        event.getTitle()
+                );
+            } catch (Exception e) {
+                log.error("Failed to send cancellation email to organizer: {}", e.getMessage());
+            }
+        }
+
+        // 3. Clean up database records
+        eventRegistrationRepository.deleteByEvent_Id(id);
         eventRepository.deleteById(id);
+
         log.info("Event hard deleted successfully: {}", id);
     }
 
