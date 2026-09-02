@@ -433,3 +433,4 @@ export const EventList: React.FC = () => {
     </div>
   );
 };
+export default EventList;
